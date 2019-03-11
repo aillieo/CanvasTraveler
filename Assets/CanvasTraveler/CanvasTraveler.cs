@@ -19,16 +19,64 @@ namespace AillieoUtils.UI
         Restart,
     }
 
-    struct SegInfo
+    class SegInfo
     {
-        public Vector3 fromPos;
-        public Vector3 toPos;
+        Vector3 mFromPos;
+        public Vector3 FromPos
+        {
+            get{ return !isReversed ? mFromPos : mToPos; }
+            set{ mFromPos = value; }
+        }
+        public Vector3 mToPos;
+        public Vector3 ToPos
+        {
+            get{ return !isReversed ? mToPos : mFromPos; }
+            set{ mToPos = value; }
+        }
         public float length;
+        public bool isReversed;
 
         public override string ToString()
         {
-            return string.Format("fromPos={0},toPos={1},length={2}",fromPos,toPos,length);
+            return string.Format("fromPos={0},toPos={1},length={2}",mFromPos,mToPos,length);
         }
+    }
+
+    class SegInfoList
+    {
+        readonly List<SegInfo> segInfoList = new List<SegInfo>();
+
+        public bool isReversed { get; private set; }
+        public int Count { get { return segInfoList.Count; } }
+        public void Add(SegInfo segInfo) { segInfoList.Add(segInfo);}
+        public void Clear() {
+            segInfoList.Clear();
+            isReversed = false;
+        }
+
+        public void Reverse()
+        {
+            isReversed = !isReversed;
+            foreach(var si in segInfoList)
+            {
+                si.isReversed = isReversed;
+            }
+        }
+
+        public SegInfo this[int index] {
+            get { return !isReversed ? segInfoList[index] : segInfoList[segInfoList.Count - 1 - index]; }
+            set {
+                if (!isReversed)
+                {
+                    segInfoList[index] = value;
+                }
+                else
+                {
+                    segInfoList[segInfoList.Count - 1 - index] = value;
+                }
+            }
+        }
+
     }
 
 
@@ -52,23 +100,24 @@ namespace AillieoUtils.UI
         public bool restartOnEnable = true;
         public float duration = 0;
         public FacingType facingType = FacingType.KeepOriginal;
-        public LoopType loopType = LoopType.Restart;              // TODO
+        public LoopType loopType = LoopType.Restart;
         public int loops = 1;
         public event Action<int> onSegEnd;
         public event Action<int> onLoopEnd;
         [HideInInspector]
-        public Vector3[] pathPoints;
+        public Vector3[] pathPoints = Array.Empty<Vector3>();
 
 
         bool played = false;
         float length;
-        readonly List<SegInfo> segInfoList = new List<SegInfo>();
+        readonly SegInfoList segInfoList = new SegInfoList();
 
         SegInfo curSegInfo;
         int curSegIndex;
         int curLoopIndex;
         float curSegProgess = 0;
         float speed = 0;
+        bool isReversed = false;
 
         bool valid;
 
@@ -86,9 +135,10 @@ namespace AillieoUtils.UI
 
                 SegInfo si = new SegInfo
                 {
-                    fromPos = pathPoints[i],
-                    toPos = pathPoints[i+1],
+                    FromPos = pathPoints[i],
+                    ToPos = pathPoints[i + 1],
                     length = curLength,
+                    isReversed = false,
                 };
                 segInfoList.Add(si);
                 length += curLength;
@@ -111,6 +161,7 @@ namespace AillieoUtils.UI
             speed = 0;
             curSegIndex = 0;
             curLoopIndex = 0;
+            isReversed = false;
             valid = false;
         }
 
@@ -146,16 +197,30 @@ namespace AillieoUtils.UI
             
         }
 
+        Vector3 CanvasPosToWorldPos(Vector3 anchoredPosition3D)
+        {
+            if(null == transform.parent)
+            {
+                return Vector3.zero;
+            }
+            return transform.parent.TransformPoint(anchoredPosition3D);
+        }
+
+
         private void OnDrawGizmos()
         {
-            // TODO
+            Gizmos.color = Color.white;
+            for(int i = 0; i < segInfoList.Count; ++i)
+            {
+                Gizmos.DrawLine(CanvasPosToWorldPos(segInfoList[i].FromPos), CanvasPosToWorldPos(segInfoList[i].ToPos));
+            }
         }
 
         void Update()
         {
             if(valid)
             {
-                rectTransform.anchoredPosition3D = Vector3.Lerp(curSegInfo.fromPos, curSegInfo.toPos, curSegProgess / curSegInfo.length);
+                rectTransform.anchoredPosition3D = Vector3.Lerp(curSegInfo.FromPos, curSegInfo.ToPos, curSegProgess / curSegInfo.length);
                 curSegProgess += speed * Time.deltaTime;
                 while (curSegProgess > curSegInfo.length)
                 {
@@ -170,6 +235,10 @@ namespace AillieoUtils.UI
             curLoopIndex++;
             if(loops < 0 || curLoopIndex < loops)
             {
+                if(loopType == LoopType.PingPong)
+                {
+                    segInfoList.Reverse();
+                }
                 curSegIndex = 0;
                 curSegInfo = segInfoList[curSegIndex];
                 UpdateRotation();
@@ -204,11 +273,11 @@ namespace AillieoUtils.UI
             case FacingType.LeftOrRight:
                 var scale = transform.localScale;
                 var scaleX = Mathf.Abs(scale.x);
-                scale.x = scaleX * (curSegInfo.toPos.x - curSegInfo.fromPos.x > 0 ? 1 : -1);
+                scale.x = scaleX * (curSegInfo.ToPos.x - curSegInfo.FromPos.x > 0 ? 1 : -1);
                 transform.localScale = scale;
                 break;
             case FacingType.ForwardAlways:
-                var angle = Vector2.SignedAngle(Vector2.right, curSegInfo.toPos - curSegInfo.fromPos);
+                var angle = Vector2.SignedAngle(Vector2.right, curSegInfo.ToPos - curSegInfo.FromPos);
                 transform.localEulerAngles = Vector3.forward * angle;
                 break;
             case FacingType.KeepOriginal:
