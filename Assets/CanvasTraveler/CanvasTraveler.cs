@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using System;
+using UnityEngine.Events;
 
 namespace AillieoUtils.UI
 {
@@ -18,6 +19,12 @@ namespace AillieoUtils.UI
         PingPong,
         Restart,
     }
+
+    [Serializable]
+    public class LoopEndEvent : UnityEvent<int> { }
+    [Serializable]
+    public class SegEndEvent : UnityEvent<int> { }
+
 
     class SegInfo
     {
@@ -46,27 +53,27 @@ namespace AillieoUtils.UI
     {
         readonly List<SegInfo> segInfoList = new List<SegInfo>();
 
-        public bool isReversed { get; private set; }
+        public bool IsReversed { get; private set; }
         public int Count { get { return segInfoList.Count; } }
         public void Add(SegInfo segInfo) { segInfoList.Add(segInfo);}
         public void Clear() {
             segInfoList.Clear();
-            isReversed = false;
+            IsReversed = false;
         }
 
         public void Reverse()
         {
-            isReversed = !isReversed;
+            IsReversed = !IsReversed;
             foreach(var si in segInfoList)
             {
-                si.isReversed = isReversed;
+                si.isReversed = IsReversed;
             }
         }
 
         public SegInfo this[int index] {
-            get { return !isReversed ? segInfoList[index] : segInfoList[segInfoList.Count - 1 - index]; }
+            get { return !IsReversed ? segInfoList[index] : segInfoList[segInfoList.Count - 1 - index]; }
             set {
-                if (!isReversed)
+                if (!IsReversed)
                 {
                     segInfoList[index] = value;
                 }
@@ -98,12 +105,16 @@ namespace AillieoUtils.UI
 
         public bool autoPlay = true;
         public bool restartOnEnable = true;
-        public float duration = 0;
+        public float duration = 1;
         public FacingType facingType = FacingType.KeepOriginal;
         public LoopType loopType = LoopType.Restart;
-        public int loops = 1;
-        public event Action<int> onSegEnd;
-        public event Action<int> onLoopEnd;
+        public int loops = 3;
+        public bool IsReversed { get; private set; } = false;
+
+        [Space]
+
+        public SegEndEvent onSegEnd;
+        public LoopEndEvent onLoopEnd;
         [HideInInspector]
         public Vector3[] pathPoints = Array.Empty<Vector3>();
 
@@ -117,7 +128,6 @@ namespace AillieoUtils.UI
         int curLoopIndex;
         float curSegProgess = 0;
         float speed = 0;
-        bool isReversed = false;
 
         bool valid;
 
@@ -161,7 +171,7 @@ namespace AillieoUtils.UI
             speed = 0;
             curSegIndex = 0;
             curLoopIndex = 0;
-            isReversed = false;
+            IsReversed = false;
             valid = false;
         }
 
@@ -222,7 +232,7 @@ namespace AillieoUtils.UI
             {
                 rectTransform.anchoredPosition3D = Vector3.Lerp(curSegInfo.FromPos, curSegInfo.ToPos, curSegProgess / curSegInfo.length);
                 curSegProgess += speed * Time.deltaTime;
-                while (curSegProgess > curSegInfo.length)
+                while (valid && curSegProgess > curSegInfo.length)
                 {
                     OnSegEnd();
                 }
@@ -238,6 +248,7 @@ namespace AillieoUtils.UI
                 if(loopType == LoopType.PingPong)
                 {
                     segInfoList.Reverse();
+                    IsReversed = segInfoList.IsReversed;
                 }
                 curSegIndex = 0;
                 curSegInfo = segInfoList[curSegIndex];
